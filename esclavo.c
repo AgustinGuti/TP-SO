@@ -4,8 +4,7 @@
 #include <stdio.h>
 #include <sys/select.h>
 #include <string.h>
-
-
+#include "config.h"
 
 int main(){
 
@@ -18,14 +17,14 @@ int main(){
     interval.tv_usec = 0;
 
 
-    char filename[1024];
+    char filename[MAX_PATH_LENGTH];
 
     while(1){
         select(1, &dataInputFds, NULL, NULL, &interval);
         sleep(1);
          
         if (FD_ISSET(0, &dataInputFds)){
-            if (read(0, filename, 1024) == -1){
+            if (read(0, filename, MAX_PATH_LENGTH) == -1){
                 perror("read");
             }  
             if (filename[0] == 0){ //Un filename vacio indica que ya no hay mas archivos para procesar
@@ -50,21 +49,21 @@ int main(){
             }
             close(pipefd[1]);
 
-            char md5Result[33];
+            char md5Result[MD5_LENGTH + 1];
 
             waitpid(md5id, NULL, 0);  
-            read(pipefd[0], md5Result, 32);
-            md5Result[32] = 0;
+            read(pipefd[0], md5Result, MD5_LENGTH);
+            md5Result[MD5_LENGTH] = 0;
            
             close(pipefd[0]);
 
-            char message[1024+32];
+            char message[MAX_PATH_LENGTH+MD5_LENGTH];
             message[0] = 0; 
             strcat(message, md5Result);
-            message[32] = 0;
+            message[MD5_LENGTH] = 0;
             strcat(message, filename);
 
-            write(1, message, 1024+32);
+            write(1, message, MAX_PATH_LENGTH+MD5_LENGTH);
           
         }
 
