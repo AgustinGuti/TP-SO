@@ -5,14 +5,27 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
+#include <signal.h>
 
-#define CANT_ESCLAVOS 5
+#define CANT_ESCLAVOS 4
 #define INITIAL_DISTRIBUTION_PERCENTAJE 0.1
 
-int main(int argc, char** argv){
+/* Catch Signal Handler functio */
+void signal_callback_handler(int signum){
+    printf("Caught signal SIGPIPE %d\n",signum);
+}
 
-    int initialFilesPerSlave = ( (argc - 1) / CANT_ESCLAVOS ) * INITIAL_DISTRIBUTION_PERCENTAJE;
-    int currentFile = 1;
+int sendNextFile(char* filename, int fd);
+
+int main(int argc, char** argv){
+    /* Catch Signal Handler SIGPIPE */
+    signal(SIGPIPE, signal_callback_handler);
+
+    int fileQty = argc - 1;
+    int initialFilesPerSlave = ( fileQty / CANT_ESCLAVOS ) * INITIAL_DISTRIBUTION_PERCENTAJE;
+
+    int currentReadyFiles = 0;
+    int currentSentFiles = 0;  
     
     int pidSlaves[CANT_ESCLAVOS];
     int writePipesFd[CANT_ESCLAVOS];
@@ -27,7 +40,7 @@ int main(int argc, char** argv){
     interval.tv_sec = 10;
     interval.tv_usec = 0;
 
-    int i, j;
+    int i;
     for (i = 0; i < CANT_ESCLAVOS; i++){
 
         int pipeFd1[2];
@@ -93,25 +106,37 @@ int main(int argc, char** argv){
 
     }
 
-
     //Distribucion inicial de archivos
     for (i = 0; i < CANT_ESCLAVOS; i++){
         //for (j = 0; j < initialFilesPerSlave; j++ ){
-           // char* fileName = argv[currentFile++];
-            char* fileName = "aplicacion.c";
-            write(writePipesFd[i], fileName, strlen(fileName));
-   
+          //  char* fileName = argv[ 1 + currentSentFiles++]; //1+ para no enviar el primer argumento
+            //char* fileName = "aplicacion.c"
+            if (currentSentFiles == fileQty){
+                write(writePipesFd[i],"", 1);  //Termine
+            }else{
+                sendNextFile(argv[1+currentSentFiles++], writePipesFd[i]);
+            }
+          
         //}
     }
+     
 
     char lastMd5[33];
+    char lastFilename[1024];
 
-    while (1){
+    char isSlaveClosed[CANT_ESCLAVOS];
+    for (i = 0; i < CANT_ESCLAVOS; i++){
+        isSlaveClosed[i] = 0;
+    }
+
+    while (currentReadyFiles < fileQty){
         FD_ZERO(&readfds);
         interval.tv_sec = 0;
         interval.tv_usec = 0;   
         for (i = 0; i < CANT_ESCLAVOS; i++){
-            FD_SET(readPipesFd[i], &readfds);
+            if (!isSlaveClosed[i]){
+                FD_SET(readPipesFd[i], &readfds);
+            }
         }
 
         select(maxReadFD+1, &readfds, NULL, NULL, &interval);
@@ -121,19 +146,48 @@ int main(int argc, char** argv){
         for (fd = 0; fd <= maxReadFD; fd++){
             if (FD_ISSET(fd, &readfds)){
                 read(fd, lastMd5, 32);
-                lastMd5[32] = 0;
-                printf("%d :: md5 is: %s \n", fd,lastMd5);
+                read(fd, lastFilename, 1024);
+        
+                currentReadyFiles++;
+
+             
                 //Busco a donde tengo que escribir para contestar
                 for (i = 0; i < CANT_ESCLAVOS; i++){
+                     
                     if (readPipesFd[i] == fd){
-                        write(writePipesFd[i], "", 1);  //Terminé
+
+                        if (currentSentFiles == fileQty){
+                         
+                            write(writePipesFd[i], "", 1);  //Terminé   
+                            close(writePipesFd[i]);
+                            FD_CLR(readPipesFd[i], &readfds);
+                            close(readPipesFd[i]);
+                            isSlaveClosed[i] = 1;
+                        
+                        }else{
+                            sendNextFile(argv[1+currentSentFiles++], writePipesFd[i]);
+                        }
+
+                    
+              
+                        printf("Progress: %d/%d, ID is: %d : Filename is: %s, md5 is: %s \n", currentReadyFiles,fileQty,pidSlaves[i], lastFilename,lastMd5);
+                        lastFilename[0] = 0;
+                        lastMd5[0] = 0;;
                     }
                 }
             }
         } 
-
+          
     }
 
+    return 0;
+}
+
+
+int sendNextFile(char* filename, int fd){
+    if (write(fd, filename, strlen(filename)+1) == -1){
+        perror("write");
+    }
     return 0;
 }
 
