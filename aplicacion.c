@@ -8,7 +8,7 @@
 #include <signal.h>
 #include "config.h"
 
-#define SLAVE_QTY 4
+#define SLAVE_QTY 5
 
 int sendString(char* string, int fd);
 
@@ -24,7 +24,7 @@ void closeSlave(int slaveNumber, int readPipesFd[SLAVE_QTY], int writePipesFd[SL
 int main(int argc, char** argv){
 
     int fileQty = argc - 1;
-    
+
     int currentReadyFiles = 0;
     int currentSentFiles = 0;  
     
@@ -33,10 +33,6 @@ int main(int argc, char** argv){
     int readPipesFd[SLAVE_QTY];
 
     fd_set readfds;
-
-    struct timeval interval;
-    interval.tv_sec = 1;
-    interval.tv_usec = 0;
 
     int i;
 
@@ -62,18 +58,22 @@ int main(int argc, char** argv){
 
     char isSlaveClosed[SLAVE_QTY] = {0};
 
+    FILE *resultFile = fopen("results.txt", "w");
+    if (resultFile == NULL){
+        perror("fopen");
+    }
+
     while (currentReadyFiles < fileQty){
         FD_ZERO(&readfds);
-        interval.tv_sec = 0;
-        interval.tv_usec = 0;   
         for (i = 0; i < SLAVE_QTY; i++){
             if (!isSlaveClosed[i]){
                 FD_SET(readPipesFd[i], &readfds);
             }
         }
 
-        select(maxReadFD+1, &readfds, NULL, NULL, &interval);
+        select(maxReadFD+1, &readfds, NULL, NULL, NULL);
         
+       
         //Verifico quien esta listo para leer
         int fd;
         for (fd = 0; fd <= maxReadFD; fd++){
@@ -81,6 +81,7 @@ int main(int argc, char** argv){
                 if (read(fd, lastMd5, MD5_LENGTH) == -1){
                     perror("read");
                 }
+                lastMd5[MD5_LENGTH] = 0;
                 if (read(fd, lastFilename, MAX_PATH_LENGTH) == -1){
                     perror("read");
                 }
@@ -95,8 +96,10 @@ int main(int argc, char** argv){
                         closeSlave(slaveNumber, readPipesFd, writePipesFd, readfds, isSlaveClosed);                    
                     }else{
                         sendString(argv[1+currentSentFiles++], writePipesFd[slaveNumber]);
-                    }            
-                    printf("Progress: %d/%d, ID is: %d : Filename is: %s, md5 is: %s \n", currentReadyFiles,fileQty,pidSlaves[slaveNumber], lastFilename,lastMd5);
+                    }     
+
+                    printf("Progress: %d/%d || ID is: %d || Filename is: %s || md5 is: %s \n", currentReadyFiles,fileQty,pidSlaves[slaveNumber], lastFilename,lastMd5);
+                    fprintf(resultFile, "ID: %d || Filename: %s || md5: %s \n", pidSlaves[slaveNumber], lastFilename, lastMd5);
                     lastFilename[0] = 0;
                     lastMd5[0] = 0;;
                 }

@@ -12,15 +12,10 @@ int main(){
     FD_ZERO(&dataInputFds);
     FD_SET(0, &dataInputFds);   //Preparar stdin select
 
-    struct timeval interval;
-    interval.tv_sec = 1;
-    interval.tv_usec = 0;
-
-
     char filename[MAX_PATH_LENGTH];
 
     while(1){
-        select(1, &dataInputFds, NULL, NULL, &interval);
+        select(1, &dataInputFds, NULL, NULL, NULL);
         sleep(1);
          
         if (FD_ISSET(0, &dataInputFds)){
