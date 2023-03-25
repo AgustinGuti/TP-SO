@@ -9,11 +9,12 @@
 #include "config.h"
 
 #define SLAVE_QTY 5
+#define INITIAL_FILE_DISTRIBUTION_FACTOR 0.1
 
 int sendString(char* string, int fd);
 
 //Crea SLAVE_QTY esclavos, y 2 pipes para cada uno, guarda sus pid, writeFd y readFd en los parametros correspondientes
-int createSlaves(int pidSlaves[SLAVE_QTY], int writePipesFd[SLAVE_QTY], int readPipesFd[SLAVE_QTY]);
+int createSlaves(int pidSlaves[SLAVE_QTY], int writePipesFd[SLAVE_QTY], int readPipesFd[SLAVE_QTY],  int fileQty, int* currentSentFiles, char **files);
 
 //Devuelve el numero de esclavo a partir de un FD, o -1 si ese fd no corresponde a ningun esclavo
 int getSlaveNumberFromFd(int fd, int readPipesFd[SLAVE_QTY], int writePipesFd[SLAVE_QTY]);
@@ -36,32 +37,18 @@ int main(int argc, char** argv){
 
     int i;
 
-    int maxReadFD = createSlaves(pidSlaves, writePipesFd, readPipesFd);
-
-    //Distribucion inicial de archivos
-    for (i = 0; i < SLAVE_QTY; i++){
-        //for (j = 0; j < initialFilesPerSlave; j++ ){
-          //  char* fileName = argv[ 1 + currentSentFiles++]; //1+ para no enviar el primer argumento
-            //char* fileName = "aplicacion.c"
-            if (currentSentFiles == fileQty){
-                sendString("", writePipesFd[i]);              
-            }else{
-                sendString(argv[1+currentSentFiles++], writePipesFd[i]);
-            }
-          
-        //}
-    }
-     
-
     char lastMd5[MD5_LENGTH + 1];
     char lastFilename[MAX_PATH_LENGTH];
 
     char isSlaveClosed[SLAVE_QTY] = {0};
+    char isSlaveReady[SLAVE_QTY] = {0};
 
     FILE *resultFile = fopen("results.txt", "w");
     if (resultFile == NULL){
         perror("fopen");
     }
+
+    int maxReadFD = createSlaves(pidSlaves, writePipesFd, readPipesFd, fileQty, &currentSentFiles, argv);
 
     while (currentReadyFiles < fileQty){
         FD_ZERO(&readfds);
@@ -73,41 +60,50 @@ int main(int argc, char** argv){
 
         select(maxReadFD+1, &readfds, NULL, NULL, NULL);
         
-       
         //Verifico quien esta listo para leer
         int fd;
         for (fd = 0; fd <= maxReadFD; fd++){
             if (FD_ISSET(fd, &readfds)){
+                int slaveNumber = getSlaveNumberFromFd(fd, readPipesFd, writePipesFd);
+
                 if (read(fd, lastMd5, MD5_LENGTH) == -1){
                     perror("read");
                 }
-                lastMd5[MD5_LENGTH] = 0;
-                if (read(fd, lastFilename, MAX_PATH_LENGTH) == -1){
-                    perror("read");
-                }
-        
-                currentReadyFiles++;
 
-                //Busco a donde tengo que escribir para contestar
-                int slaveNumber = getSlaveNumberFromFd(fd, readPipesFd, writePipesFd);
+                if (lastMd5[0] == 0 ){
+                    isSlaveReady[slaveNumber] = 1;
+                    sendString(argv[1+currentSentFiles++], writePipesFd[slaveNumber]);
+                }else {
+                    lastMd5[MD5_LENGTH] = 0;
 
-                if (slaveNumber != -1){
-                    if (currentSentFiles == fileQty){
-                        closeSlave(slaveNumber, readPipesFd, writePipesFd, readfds, isSlaveClosed);                    
-                    }else{
-                        sendString(argv[1+currentSentFiles++], writePipesFd[slaveNumber]);
-                    }     
+                    if (read(fd, lastFilename, MAX_PATH_LENGTH) == -1){
+                        perror("read");
+                    }
+            
+                    currentReadyFiles++;             
 
-                    printf("Progress: %d/%d || ID is: %d || Filename is: %s || md5 is: %s \n", currentReadyFiles,fileQty,pidSlaves[slaveNumber], lastFilename,lastMd5);
-                    fprintf(resultFile, "ID: %d || Filename: %s || md5: %s \n", pidSlaves[slaveNumber], lastFilename, lastMd5);
-                    lastFilename[0] = 0;
-                    lastMd5[0] = 0;;
+                    if (slaveNumber != -1){
+                        if (currentSentFiles == fileQty){
+                            closeSlave(slaveNumber, readPipesFd, writePipesFd, readfds, isSlaveClosed);                    
+                        }else{
+                            if (isSlaveReady[slaveNumber]){
+                                sendString(argv[1+currentSentFiles++], writePipesFd[slaveNumber]);
+                            }
+                        }     
+
+                        printf("Progress: %d/%d || ID is: %d || Filename is: %s || md5 is: %s \n", currentReadyFiles,fileQty,pidSlaves[slaveNumber], lastFilename,lastMd5);
+                        fprintf(resultFile, "ID: %d || Filename: %s || md5: %s \n", pidSlaves[slaveNumber], lastFilename, lastMd5);
+                        lastFilename[0] = 0;
+                        lastMd5[0] = 0;;
+                    }
                 }
                 
             }
         } 
           
     }
+
+    fclose(resultFile);
 
     return 0;
 }
@@ -148,9 +144,12 @@ int sendString(char* string, int fd){
     return 0;
 }
 
-int createSlaves(int pidSlaves[SLAVE_QTY], int writePipesFd[SLAVE_QTY], int readPipesFd[SLAVE_QTY]){
+int createSlaves(int pidSlaves[SLAVE_QTY], int writePipesFd[SLAVE_QTY], int readPipesFd[SLAVE_QTY], int fileQty, int* currentSentFiles, char **files){
 
-    int i, maxReadFD = 0;
+    int initialFilesPerSlave =  fileQty * INITIAL_FILE_DISTRIBUTION_FACTOR / SLAVE_QTY;
+    
+
+    int i, j, maxReadFD = 0;
     for (i = 0; i < SLAVE_QTY; i++){
 
         int pipeFd1[2];
@@ -166,6 +165,15 @@ int createSlaves(int pidSlaves[SLAVE_QTY], int writePipesFd[SLAVE_QTY], int read
                 maxReadFD = readPipesFd[i];
             }
         }
+
+        char *params[2+initialFilesPerSlave];
+        params[0] = "./esclavo.out";
+        for (j = 0; j < initialFilesPerSlave; j++){
+            params[1+j] = files[1+*currentSentFiles];
+            *currentSentFiles += 1;
+        }
+        params[2+initialFilesPerSlave] = NULL;
+
 
         pidSlaves[i] = fork();
         if (pidSlaves[i] == -1){
@@ -198,7 +206,8 @@ int createSlaves(int pidSlaves[SLAVE_QTY], int writePipesFd[SLAVE_QTY], int read
                 perror("close");
             }
             
-            char *const params[] = {"./esclavo.out", NULL};
+            //char *const params[] = {"./esclavo.out", NULL};
+
             if (execve("./esclavo.out", params, 0) == -1){
                 perror("execve");
             }

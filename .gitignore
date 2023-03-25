@@ -3,4 +3,6 @@
 *.out
 *.json
 
+*.txt
+
 test
