@@ -12,8 +12,7 @@
 #define SLAVE_QTY 5
 #define INITIAL_FILE_DISTRIBUTION_FACTOR 0.1
 #define SHARE_BETWEEN_PROCESSES 1
-#define PID_LENGTH 10
-#define DATA_LENGTH (MD5_LENGTH + MAX_PATH_LENGTH + PID_LENGTH + 1)
+
 
 int sendString(char* string, int fd);
 
