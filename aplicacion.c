@@ -58,6 +58,8 @@ int main(int argc, char** argv){
     shmp->cnt=0;
     sem_post(&shmp->mutex);
 
+    sleep(5);
+
     int fileQty = argc - 1;
 
     int currentReadyFiles = 0;
@@ -127,20 +129,19 @@ int main(int argc, char** argv){
                         
 
                         // printf("ID is: %d || Filename is: %s || md5 is: %s \n", pidSlaves[slaveNumber], lastFilename,lastMd5);
+                        fprintf(resultFile, "md5: %s || ID: %d || filename: %s \n", lastMd5, pidSlaves[slaveNumber], lastFilename);
                         
                         char string[DATA_LENGTH]={0};
-                        // "Dsadmwdqkl;djwqk10FIlename0000000000000000000000000000Number0"
                         sprintf(string, "%s",lastMd5);
-                        sprintf(string+MD5_LENGTH, "%s",lastFilename);
-                        sprintf(string+MD5_LENGTH+MAX_PATH_LENGTH, "%d", pidSlaves[slaveNumber]);
-                        
+                        sprintf(string+MD5_LENGTH+1, "%s",lastFilename);
+                        sprintf(string+MD5_LENGTH+MAX_PATH_LENGTH+2, "%d", pidSlaves[slaveNumber]);
+
                         sem_wait(&shmp->mutex);
                         memcpy(&(shmp->buf[shmp->cnt]), string, DATA_LENGTH);
                         shmp->cnt+= DATA_LENGTH;
                         sem_post(&shmp->mutex);
                         sem_post(&shmp->readyFiles);
-
-                        fprintf(resultFile, "ID: %d || Filename: %s || md5: %s \n", pidSlaves[slaveNumber], lastFilename, lastMd5);
+                    
                         lastFilename[0] = 0;
                         lastMd5[0] = 0;
                     }
@@ -150,6 +151,13 @@ int main(int argc, char** argv){
         } 
           
     }
+
+    
+    sem_wait(&shmp->mutex);
+    memcpy(&(shmp->buf[shmp->cnt]), "", 1);
+    shmp->cnt+= DATA_LENGTH;
+    sem_post(&shmp->mutex);
+    sem_post(&shmp->readyFiles);
 
     fclose(resultFile);
     shm_unlink(shmpath);

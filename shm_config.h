@@ -6,10 +6,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define errExit(msg)    do { perror(msg); exit(EXIT_FAILURE); \
-                        } while (0)
+#define PID_LENGTH 10
+#define DATA_LENGTH (MD5_LENGTH + MAX_PATH_LENGTH + PID_LENGTH + 2)
 
-#define BUF_SIZE 1024   /* Maximum size for exchanged string */
+#define BUF_SIZE 5057056   /* Maximum size for exchanged string */
 
 /* Define a structure that will be imposed on the shared
     memory object */
