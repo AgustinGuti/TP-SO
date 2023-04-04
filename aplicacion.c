@@ -7,9 +7,13 @@
 #include <string.h>
 #include <signal.h>
 #include "config.h"
+#include "shm_config.h"
 
 #define SLAVE_QTY 5
 #define INITIAL_FILE_DISTRIBUTION_FACTOR 0.1
+#define SHARE_BETWEEN_PROCESSES 1
+#define PID_LENGTH 10
+#define DATA_LENGTH (MD5_LENGTH + MAX_PATH_LENGTH + PID_LENGTH + 1)
 
 int sendString(char* string, int fd);
 
@@ -23,6 +27,36 @@ int getSlaveNumberFromFd(int fd, int readPipesFd[SLAVE_QTY], int writePipesFd[SL
 void closeSlave(int slaveNumber, int readPipesFd[SLAVE_QTY], int writePipesFd[SLAVE_QTY], fd_set readfds, char isSlaveClosed[SLAVE_QTY]);
 
 int main(int argc, char** argv){
+
+    char *shmpath = "/shm_vista";
+
+    /* Create shared memory object and set its size to the size
+        of our structure. */
+
+    
+    int shmFd = shm_open(shmpath, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    if (shmFd == -1)
+        perror("shm_open");
+
+    if (ftruncate(shmFd, sizeof(struct shmbuf)) == -1)
+        perror("ftruncate");
+
+    /* Map the object into the caller's address space. */
+
+    struct shmbuf *shmp = mmap(NULL, sizeof(*shmp), PROT_READ | PROT_WRITE,MAP_SHARED, shmFd, 0);
+    if (shmp == MAP_FAILED)
+        perror("mmap");
+
+     /* Initialize semaphores as process-shared, with value 0. */
+
+    if (sem_init(&shmp->mutex, SHARE_BETWEEN_PROCESSES, 1) == -1)
+        perror("sem_init-mutex");
+    if (sem_init(&shmp->readyFiles, SHARE_BETWEEN_PROCESSES, 0) == -1)
+        perror("sem_init-readyFiles");
+
+    sem_wait(&shmp->mutex);
+    shmp->cnt=0;
+    sem_post(&shmp->mutex);
 
     int fileQty = argc - 1;
 
@@ -79,7 +113,7 @@ int main(int argc, char** argv){
                     if (read(fd, lastFilename, MAX_PATH_LENGTH) == -1){
                         perror("read");
                     }
-            
+
                     currentReadyFiles++;             
 
                     if (slaveNumber != -1){
@@ -90,11 +124,25 @@ int main(int argc, char** argv){
                                 sendString(argv[1+currentSentFiles++], writePipesFd[slaveNumber]);
                             }
                         }     
+                        
 
-                        printf("Progress: %d/%d || ID is: %d || Filename is: %s || md5 is: %s \n", currentReadyFiles,fileQty,pidSlaves[slaveNumber], lastFilename,lastMd5);
+                        // printf("ID is: %d || Filename is: %s || md5 is: %s \n", pidSlaves[slaveNumber], lastFilename,lastMd5);
+                        
+                        char string[DATA_LENGTH]={0};
+                        // "Dsadmwdqkl;djwqk10FIlename0000000000000000000000000000Number0"
+                        sprintf(string, "%s",lastMd5);
+                        sprintf(string+MD5_LENGTH, "%s",lastFilename);
+                        sprintf(string+MD5_LENGTH+MAX_PATH_LENGTH, "%d", pidSlaves[slaveNumber]);
+                        
+                        sem_wait(&shmp->mutex);
+                        memcpy(&(shmp->buf[shmp->cnt]), string, DATA_LENGTH);
+                        shmp->cnt+= DATA_LENGTH;
+                        sem_post(&shmp->mutex);
+                        sem_post(&shmp->readyFiles);
+
                         fprintf(resultFile, "ID: %d || Filename: %s || md5: %s \n", pidSlaves[slaveNumber], lastFilename, lastMd5);
                         lastFilename[0] = 0;
-                        lastMd5[0] = 0;;
+                        lastMd5[0] = 0;
                     }
                 }
                 
@@ -104,6 +152,7 @@ int main(int argc, char** argv){
     }
 
     fclose(resultFile);
+    shm_unlink(shmpath);
 
     return 0;
 }
