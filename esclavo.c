@@ -22,20 +22,20 @@ int main(int argc, char **argv)
         {
             perror("read");
         }
-        if (filename[0] == 0)
-        { // Un filename vacio indica que ya no hay mas archivos para procesar
+        if (charsRead == 0)
+        { 
             break;
         }
         char md5Result[MD5_LENGTH + 1];
         delegateMd5(filename, md5Result);
-        char message[MAX_PATH_LENGTH + MD5_LENGTH + 1];
-        message[0] = 0;
-        strcat(message, md5Result);
-        message[MD5_LENGTH] = 0;
-        strcat(message, filename);
-        message[MD5_LENGTH + MAX_PATH_LENGTH] = 0;
+        char resultData[MAX_PATH_LENGTH + MD5_LENGTH + 1];
+        resultData[0] = 0;
+        strcat(resultData, md5Result);
+        resultData[MD5_LENGTH] = 0;
+        strcat(resultData, filename);
+        resultData[MD5_LENGTH + MAX_PATH_LENGTH] = 0;
 
-        if (write(1, message, MAX_PATH_LENGTH + MD5_LENGTH) == -1)
+        if (write(1, resultData, MAX_PATH_LENGTH + MD5_LENGTH) == -1)
         {
             perror("write");
         }

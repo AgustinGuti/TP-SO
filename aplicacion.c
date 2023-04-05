@@ -26,17 +26,20 @@ void closeSlave(int slaveNumber, int readPipesFd[SLAVE_QTY], int writePipesFd[SL
 
 int main(int argc, char **argv)
 {
+    int fileQty = argc - 1;
 
     char *shmpath = "/shm_vista";
 
     /* Create shared memory object and set its size to the size
         of our structure. */
+    int pageSize = sysconf(_SC_PAGE_SIZE);
+    off_t offset = (off_t)ceil((double) sizeof(struct shmbuf) / pageSize) * pageSize;
 
     int shmFd = shm_open(shmpath, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     if (shmFd == -1)
         perror("shm_open");
 
-    if (ftruncate(shmFd, sizeof(struct shmbuf)) == -1)
+    if (ftruncate(shmFd, offset + (fileQty + 1) * DATA_LENGTH) == -1)
         perror("ftruncate");
 
     /* Map the object into the caller's address space. */
@@ -44,6 +47,9 @@ int main(int argc, char **argv)
     struct shmbuf *shmp = mmap(NULL, sizeof(*shmp), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
     if (shmp == MAP_FAILED)
         perror("mmap");
+
+
+    char * buffer = mmap(NULL, DATA_LENGTH * (fileQty + 1), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, offset);
 
     /* Initialize semaphores as process-shared, with value 0. */
 
@@ -58,7 +64,13 @@ int main(int argc, char **argv)
 
     sleep(5);
 
-    int fileQty = argc - 1;
+    if(isProcessRunning("vista.out")){
+        printf("%d\n", fileQty);
+        fflush(stdout);
+    }
+
+
+    
 
     int readyFilesQty = 0;
     int sentFilesQty = 0;
@@ -159,7 +171,7 @@ int main(int argc, char **argv)
                     sprintf(string + MD5_LENGTH + MAX_PATH_LENGTH + 2, "%d", pidSlaves[slaveNumber]);
 
                     sem_wait(&shmp->mutex);
-                    memcpy(&(shmp->buf[shmp->cnt]), string, DATA_LENGTH);
+                    memcpy(&(buffer[shmp->cnt]), string, DATA_LENGTH);
                     shmp->cnt += DATA_LENGTH;
                     sem_post(&shmp->mutex);
                     sem_post(&shmp->readyFiles);
@@ -172,7 +184,7 @@ int main(int argc, char **argv)
     }
 
     sem_wait(&shmp->mutex);
-    memcpy(&(shmp->buf[shmp->cnt]), "", 1);
+    memcpy(&(buffer[shmp->cnt]), "", 1);
     shmp->cnt += DATA_LENGTH;
     sem_post(&shmp->mutex);
     sem_post(&shmp->readyFiles);
@@ -185,7 +197,6 @@ int main(int argc, char **argv)
 
 void closeSlave(int slaveNumber, int readPipesFd[SLAVE_QTY], int writePipesFd[SLAVE_QTY], fd_set readfds, char isSlaveClosed[SLAVE_QTY])
 {
-    sendString("", writePipesFd[slaveNumber]);
     if (close(writePipesFd[slaveNumber]) == -1)
     {
         perror("close");
