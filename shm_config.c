@@ -1,6 +1,7 @@
 #include "shm_config.h"
 
-char isProcessRunning(char *processName) {
+char isProcessRunning(char *processName)
+{
     int findID = fork(); // Escribe al pipe
     if (findID == 0)
     {

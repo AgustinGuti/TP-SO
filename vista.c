@@ -1,35 +1,28 @@
-#include <sys/types.h>
-#include <sys/time.h>
-#include <sys/wait.h>
-#include <sys/select.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <string.h>
-#include <signal.h>
 #include "config.h"
 #include "shm_config.h"
 
+int readFileQty();
 
 int main(int argc, char *argv[])
-{   
+{
     int fileQty;
-    if( argc > 2) {
+    if (argc > 2)
+    {
         printf("Invalid arguments\n");
         exit(1);
-    }else if( argc == 2 ){
-        if( !isProcessRunning("aplicacion.out")) {
+    }
+    else if (argc == 2)
+    {
+        if (!isProcessRunning("aplicacion.out"))
+        {
             printf("aplicacion no esta corriendo\n");
             exit(1);
         }
         fileQty = strtol(argv[1], NULL, 10);
-
-    }else{
-        char fileQtyBuf[10] = {0};
-        int charsRead = 0;
-        while( fileQtyBuf[strlen(fileQtyBuf)-1] != '\n' ) {
-            charsRead += read(0, fileQtyBuf+charsRead, 10 - charsRead);
-        }
-        fileQty = strtol(fileQtyBuf, NULL, 10);
+    }
+    else
+    {
+        fileQty = readFileQty();
     }
 
     char *shmPath = "/shm_vista";
@@ -47,9 +40,9 @@ int main(int argc, char *argv[])
     }
 
     int pageSize = sysconf(_SC_PAGE_SIZE);
-    off_t offset = (off_t)ceil((double) sizeof(struct shmbuf) / pageSize) * pageSize;
+    off_t offset = (off_t)ceil((double)sizeof(struct shmbuf) / pageSize) * pageSize;
 
-    char * buffer = mmap(NULL, DATA_LENGTH * (fileQty + 1), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, offset);
+    char *buffer = mmap(NULL, DATA_LENGTH * (fileQty + 1), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, offset);
 
     char toPrint[DATA_LENGTH];
     int bytesRead = 0;
@@ -69,4 +62,15 @@ int main(int argc, char *argv[])
     }
     shm_unlink(shmPath);
     return 0;
+}
+
+int readFileQty()
+{
+    char fileQtyBuf[10] = {0};
+    int charsRead = 0;
+    while (fileQtyBuf[strlen(fileQtyBuf) - 1] != '\n')
+    {
+        charsRead += read(0, fileQtyBuf + charsRead, 10 - charsRead);
+    }
+    return strtol(fileQtyBuf, NULL, 10);
 }

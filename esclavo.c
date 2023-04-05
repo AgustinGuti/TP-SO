@@ -10,7 +10,7 @@
 // Crea un proceso md5sum que hashea filename y deja el resultado en result
 void delegateMd5(char *filename, char result[MD5_LENGTH + 1]);
 
-int sendString(char *string, int fd);
+void createResultData(char *filename, char *md5, char *resultData);
 
 int main(int argc, char **argv)
 {
@@ -23,17 +23,13 @@ int main(int argc, char **argv)
             perror("read");
         }
         if (charsRead == 0)
-        { 
+        {
             break;
         }
         char md5Result[MD5_LENGTH + 1];
         delegateMd5(filename, md5Result);
         char resultData[MAX_PATH_LENGTH + MD5_LENGTH + 1];
-        resultData[0] = 0;
-        strcat(resultData, md5Result);
-        resultData[MD5_LENGTH] = 0;
-        strcat(resultData, filename);
-        resultData[MD5_LENGTH + MAX_PATH_LENGTH] = 0;
+        createResultData(filename, md5Result, resultData);
 
         if (write(1, resultData, MAX_PATH_LENGTH + MD5_LENGTH) == -1)
         {
@@ -73,11 +69,11 @@ void delegateMd5(char *filename, char result[MD5_LENGTH + 1])
     close(pipefd[0]);
 }
 
-int sendString(char *string, int fd)
+void createResultData(char *filename, char *md5, char *resultData)
 {
-    if (write(fd, string, strlen(string) + 1) == -1)
-    {
-        perror("write");
-    }
-    return 0;
+    resultData[0] = 0;
+    strcat(resultData, md5);
+    resultData[MD5_LENGTH] = 0;
+    strcat(resultData, filename);
+    resultData[MD5_LENGTH + MAX_PATH_LENGTH] = 0;
 }
