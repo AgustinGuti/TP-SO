@@ -5,6 +5,8 @@
 
 int readFileQty();
 
+char readFromSharedMemory(struct shmbuf *shmp, char *buffer, char *toPrint, int *bytesRead);
+
 int main(int argc, char *argv[])
 {
     int fileQty;
@@ -50,16 +52,10 @@ int main(int argc, char *argv[])
     int bytesRead = 0;
     while (1)
     {
-
-        sem_wait(&shmp->readyFiles);
-        sem_wait(&shmp->mutex);
-        memcpy(toPrint, &buffer[bytesRead], DATA_LENGTH);
-        if (toPrint[0] == 0)
+        if (readFromSharedMemory(shmp, buffer, toPrint, &bytesRead))
         {
             break;
         }
-        sem_post(&shmp->mutex);
-        bytesRead += DATA_LENGTH;
         printf("md5: %s || ID: %s || filename: %s \n", toPrint, toPrint + MD5_LENGTH + MAX_PATH_LENGTH + 2, toPrint + MD5_LENGTH + 1);
     }
     shm_unlink(shmPath);
@@ -75,4 +71,14 @@ int readFileQty()
         charsRead += read(0, fileQtyBuf + charsRead, 10 - charsRead);
     }
     return strtol(fileQtyBuf, NULL, 10);
+}
+
+char readFromSharedMemory(struct shmbuf *shmp, char *buffer, char *toPrint, int *bytesRead)
+{
+    sem_wait(&shmp->readyFiles);
+    sem_wait(&shmp->mutex);
+    memcpy(toPrint, &buffer[*bytesRead], DATA_LENGTH);
+    sem_post(&shmp->mutex);
+    *bytesRead += DATA_LENGTH;
+    return toPrint[0] == 0;
 }
