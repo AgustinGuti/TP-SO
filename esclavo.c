@@ -1,3 +1,5 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -14,7 +16,7 @@ void createResultData(char *filename, char *md5, char *resultData);
 
 int main(int argc, char **argv)
 {
-    char filename[MAX_PATH_LENGTH] = {0};
+    char filename[MAX_PATH_LENGTH + 1] = {0};
     while (1)
     {
         int charsRead = 0;
@@ -26,9 +28,15 @@ int main(int argc, char **argv)
         {
             break;
         }
+        // Al ingresar el nombre de archivo por consola se inyecta un enter al final, hay que removerlo
+        if (filename[charsRead - 1] == '\n')
+        {
+            filename[charsRead - 1] = 0;
+        }
+
         char md5Result[MD5_LENGTH + 1];
         delegateMd5(filename, md5Result);
-        char resultData[MAX_PATH_LENGTH + MD5_LENGTH + 1];
+        char resultData[MAX_PATH_LENGTH + MD5_LENGTH + 1] = {0};
         createResultData(filename, md5Result, resultData);
 
         if (write(1, resultData, MAX_PATH_LENGTH + MD5_LENGTH) == -1)

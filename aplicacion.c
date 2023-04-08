@@ -1,3 +1,5 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include <sys/select.h>
 #include "config.h"
 #include "shm_config.h"
@@ -275,8 +277,8 @@ int createSlaves(int pidSlaves[SLAVE_QTY], int writePipesFd[SLAVE_QTY], int read
     for (i = 0; i < SLAVE_QTY; i++)
     {
 
-        int pipeFd1[2];
-        int pipeFd2[2];
+        int pipeFd1[2] = {0};
+        int pipeFd2[2] = {0};
 
         if (pipe(pipeFd1) == -1 || pipe(pipeFd2) == -1)
         {
