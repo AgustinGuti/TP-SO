@@ -263,6 +263,7 @@ int sendString(char *string, int fd)
 {
     char aux[MAX_PATH_LENGTH + 1] = {0};
     strcpy(aux, string);
+    strcat(aux, "\n");
     if (write(fd, aux, MAX_PATH_LENGTH + 1) == -1)
     {
         perror("write");
@@ -276,7 +277,6 @@ int createSlaves(int pidSlaves[SLAVE_QTY], int writePipesFd[SLAVE_QTY], int read
     int i, maxReadFD = 0;
     for (i = 0; i < SLAVE_QTY; i++)
     {
-
         int pipeFd1[2] = {0};
         int pipeFd2[2] = {0};
 

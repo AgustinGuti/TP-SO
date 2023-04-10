@@ -28,11 +28,12 @@ int main(int argc, char **argv)
         {
             break;
         }
-        // Al ingresar el nombre de archivo por consola se inyecta un enter al final, hay que removerlo
-        if (filename[charsRead - 1] == '\n')
-        {
-            filename[charsRead - 1] = 0;
+        // Chequeo de lectura completa
+        while( filename[strlen(filename)-1] != '\n') {
+            charsRead += read(0, filename + charsRead, MAX_PATH_LENGTH+1 - charsRead);
         }
+        // Al ingresar el nombre de archivo por consola se inyecta un enter al final, hay que removerlo
+        filename[strlen(filename)-1] = 0;
 
         char md5Result[MD5_LENGTH + 1];
         delegateMd5(filename, md5Result);
