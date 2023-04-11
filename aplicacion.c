@@ -15,16 +15,10 @@ int createSlaves(int pidSlaves[SLAVE_QTY], int writePipesFd[SLAVE_QTY], int read
 
 int calculateInitialFilesPerSlave(int fileQty, int pageSize);
 
-void initSemaphores(sem_t *readyFiles);
-
-void parseMessage(char *message, char *lastMd5, char *lastFilename, size_t length);
-
 int buildString(char *string, char *lastMd5, char *lastFilename, int pid);
 
 // Devuelve el numero de esclavo a partir de un FD, o -1 si ese fd no corresponde a ningun esclavo
 int getSlaveNumberFromFd(int fd, int readPipesFd[SLAVE_QTY], int writePipesFd[SLAVE_QTY]);
-
-void writeToSharedMemory(char *string, sem_t *readyFiles, char *buffer, int lenght, int *bytesWrittenToSharedMemory);
 
 // Envia mensaje de cierre al esclavo, cierra los pipes correspondientes y lo marca como cerrado
 void closeSlave(int slaveNumber, int readPipesFd[SLAVE_QTY], int writePipesFd[SLAVE_QTY], fd_set readfds, char isSlaveClosed[SLAVE_QTY]);
@@ -127,26 +121,21 @@ int main(int argc, char **argv)
                 readyFilesQty++;
                 if (slaveNumber != -1)
                 {
-                    if (sentFilesQty == fileQty)
+                    if (initialFilesLeft[slaveNumber] > 0)
                     {
-                        closeSlave(slaveNumber, readPipesFd, writePipesFd, readfds, isSlaveClosed);         
+                        initialFilesLeft[slaveNumber]--;
                     }
-                    else
-                    {
-                        // there are no initial Files Left
-                        if (initialFilesLeft[slaveNumber] > 0)
-                        {
-                            initialFilesLeft[slaveNumber]--;
-
+                    if (initialFilesLeft[slaveNumber] == 0)
+                    {   
+                        if (sentFilesQty == fileQty){
+                            closeSlave(slaveNumber, readPipesFd, writePipesFd, readfds, isSlaveClosed);         
                         }
-                        if (initialFilesLeft[slaveNumber] == 0)
-                        {
+                        else{ 
                             sendString(argv[1 + sentFilesQty], writePipesFd[slaveNumber]);
                             filesSentToSlave[slaveNumber][filesSentToSlaveIndex[slaveNumber]++] = sentFilesQty + 1;
                             sentFilesQty++;
                         }
                     }
-
 
                     char string[DATA_LENGTH] = {0};
 
@@ -180,7 +169,6 @@ int calculateInitialFilesPerSlave(int fileQty, int pageSize)
     }
     return res;
 }
-
 
 void closeSlave(int slaveNumber, int readPipesFd[SLAVE_QTY], int writePipesFd[SLAVE_QTY], fd_set readfds, char isSlaveClosed[SLAVE_QTY])
 {

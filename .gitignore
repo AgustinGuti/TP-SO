@@ -8,4 +8,4 @@ report.tasks
 
 *.txt
 
-test
+test*

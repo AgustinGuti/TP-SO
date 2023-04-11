@@ -5,8 +5,6 @@
 
 int readAppPID();
 
-char printFromSharedMemory(sem_t *readyFiles, char *buffer, char *toPrint, size_t *bytesRead);
-
 char isProcessRunning(char *processName);
 
 int main(int argc, char *argv[])

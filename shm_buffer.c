@@ -31,7 +31,7 @@ shmData *createSharedBuffer(int id, int fileQty)
     if (shmFd == -1)
         perror("shm_open");
 
-    if (ftruncate(shmFd, offset + ((fileQty + 1) * DATA_LENGTH))*2 == -1)
+    if (ftruncate(shmFd, offset + (fileQty + 1) * DATA_LENGTH) == -1)
         perror("ftruncate");
 
     /* Map the object into the caller's address space. */
@@ -113,6 +113,7 @@ void closeSharedBuffer(shmData *shmDataCreated){
     // munmap(shmDataCreated->writeBuffer, shmDataCreated->bufSize);
     // munmap(shmDataCreated, sizeof(shmData));
 
+    sem_close(&shmDataCreated->readyFiles);
     shm_unlink(shmDataCreated->shmPath);
 }
 
