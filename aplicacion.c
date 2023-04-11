@@ -6,7 +6,7 @@
 
 #define SLAVE_QTY 5
 #define INITIAL_FILE_DISTRIBUTION_FACTOR 0.1
-#define SET_INITIAL_FILES_PER_SLAVE(fileQty) fileQty *INITIAL_FILE_DISTRIBUTION_FACTOR / SLAVE_QTY
+#define SET_INITIAL_FILES_PER_SLAVE(fileQty) ((fileQty) *INITIAL_FILE_DISTRIBUTION_FACTOR / SLAVE_QTY)
 
 int sendString(char *string, int fd);
 
@@ -298,7 +298,7 @@ int createSlaves(int pidSlaves[SLAVE_QTY], int writePipesFd[SLAVE_QTY], int read
 
             // char *const params[] = {"./esclavo.out", NULL};
 
-            if (execve("./esclavo.out", params, 0) == -1)
+            if (execve(params[0], params, 0) == -1)
             {
                 perror("execve");
             }

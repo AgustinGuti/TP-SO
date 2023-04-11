@@ -36,7 +36,7 @@ int main(int argc, char **argv)
         // Elimino el salto de linea
         filename[charsRead - 1] = 0;
 
-        char md5Result[MD5_LENGTH + 1];
+        char md5Result[MD5_LENGTH];
         delegateMd5(filename, md5Result);
         char resultData[MD5_LENGTH + 1] = {0};
         int length = sprintf(resultData, "%s\n", md5Result); 
@@ -67,8 +67,8 @@ void delegateMd5(char *filename, char result[MD5_LENGTH + 1])
         dup(pipefd[1]);
         close(pipefd[1]);
         char *const params[] = {"md5sum", filename, NULL};
-        execvp("md5sum", params);
-        perror("execve");
+        execvp(params[0], params);
+        perror("execvp");
         return;
     }
 

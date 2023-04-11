@@ -66,7 +66,7 @@ char isProcessRunning(char *processName)
         strcat(buffer, processName);
         strcat(buffer, " > /dev/null");
         char *const params[] = {"/bin/sh", "-c", buffer, NULL};
-        execve("/bin/sh", params, 0);
+        execve(params[0], params, 0);
         perror("execve");
         return 0;
     }
