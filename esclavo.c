@@ -7,44 +7,46 @@
 #include <sys/select.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 #include "config.h"
 
 // Crea un proceso md5sum que hashea filename y deja el resultado en result
 void delegateMd5(char *filename, char result[MD5_LENGTH + 1]);
 
-void createResultData(char *filename, char *md5, char *resultData);
+int createResultData(char *filename, char *md5, char *resultData);
 
 int main(int argc, char **argv)
 {
-    char filename[MAX_PATH_LENGTH + 1] = {0};
+    size_t linecap = MAX_PATH_LENGTH+1;
+    char *filename = malloc(MAX_PATH_LENGTH + 1);
+
     while (1)
     {
+        
         int charsRead = 0;
-        if ((charsRead = read(0, filename, MAX_PATH_LENGTH + 1)) == -1)
+
+        errno = 0;
+        if ((charsRead = getline(&filename, &linecap, stdin)) == -1)
         {
-            perror("read");
-        }
-        if (charsRead == 0)
-        {
+            if (errno != 0){
+                perror("getline");
+            }
             break;
         }
-        // Chequeo de lectura completa
-        while( filename[strlen(filename)-1] != '\n') {
-            charsRead += read(0, filename + charsRead, MAX_PATH_LENGTH+1 - charsRead);
-        }
-        // Al ingresar el nombre de archivo por consola se inyecta un enter al final, hay que removerlo
-        filename[strlen(filename)-1] = 0;
+        filename[charsRead - 1] = 0;
 
         char md5Result[MD5_LENGTH + 1];
         delegateMd5(filename, md5Result);
         char resultData[MAX_PATH_LENGTH + MD5_LENGTH + 1] = {0};
-        createResultData(filename, md5Result, resultData);
+        int lenght = sprintf(resultData, "%s\n", md5Result); 
 
-        if (write(1, resultData, MAX_PATH_LENGTH + MD5_LENGTH) == -1)
+        if (write(1, resultData, lenght) == -1)
         {
             perror("write");
         }
     }
+    free(filename);
+
     return 0;
 }
 
@@ -76,13 +78,4 @@ void delegateMd5(char *filename, char result[MD5_LENGTH + 1])
     result[MD5_LENGTH] = 0;
 
     close(pipefd[0]);
-}
-
-void createResultData(char *filename, char *md5, char *resultData)
-{
-    resultData[0] = 0;
-    strcat(resultData, md5);
-    resultData[MD5_LENGTH] = 0;
-    strcat(resultData, filename);
-    resultData[MD5_LENGTH + MAX_PATH_LENGTH] = 0;
 }

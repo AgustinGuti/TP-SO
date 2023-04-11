@@ -17,12 +17,5 @@
 /* Define a structure that will be imposed on the shared
     memory object */
 
-struct shmbuf {
-    sem_t  mutex;            /* POSIX unnamed semaphore */
-    sem_t  readyFiles;            /* POSIX unnamed semaphore */
-    size_t cnt;             /* Number of bytes used in 'buf' */
-};
-
-char isProcessRunning(char *processName);
-
+sem_t readyFiles;
 

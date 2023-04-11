@@ -5,7 +5,11 @@
 
 int readFileQty();
 
-char readFromSharedMemory(struct shmbuf *shmp, char *buffer, char *toPrint, int *bytesRead);
+char printFromSharedMemory(sem_t *readyFiles, char *buffer, char *toPrint, size_t *bytesRead);
+
+char isProcessRunning(char *processName);
+
+
 
 int main(int argc, char *argv[])
 {
@@ -37,26 +41,25 @@ int main(int argc, char *argv[])
         perror("shm_open");
     }
 
-    struct shmbuf *shmp = mmap(NULL, sizeof(*shmp), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
-    if (shmp == MAP_FAILED)
+    sem_t *readyFiles = mmap(NULL, sizeof(readyFiles), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
+    if (readyFiles == MAP_FAILED)
     {
         perror("mmap");
     }
 
     int pageSize = sysconf(_SC_PAGE_SIZE);
-    off_t offset = (off_t)ceil((double)sizeof(struct shmbuf) / pageSize) * pageSize;
+    off_t offset = (off_t)ceil((double)sizeof(sem_t) / pageSize) * pageSize;
 
     char *buffer = mmap(NULL, DATA_LENGTH * (fileQty + 1), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, offset);
 
     char toPrint[DATA_LENGTH];
-    int bytesRead = 0;
+    size_t bytesRead = 0;
     while (1)
     {
-        if (readFromSharedMemory(shmp, buffer, toPrint, &bytesRead))
+        if (printFromSharedMemory(readyFiles, buffer, toPrint, &bytesRead))
         {
             break;
         }
-        printf("md5: %s || ID: %s || filename: %s \n", toPrint, toPrint + MD5_LENGTH + MAX_PATH_LENGTH + 2, toPrint + MD5_LENGTH + 1);
     }
     shm_unlink(shmPath);
     return 0;
@@ -64,21 +67,40 @@ int main(int argc, char *argv[])
 
 int readFileQty()
 {
-    char fileQtyBuf[10] = {0};
-    int charsRead = 0;
-    while (fileQtyBuf[strlen(fileQtyBuf) - 1] != '\n')
-    {
-        charsRead += read(0, fileQtyBuf + charsRead, 10 - charsRead);
-    }
-    return strtol(fileQtyBuf, NULL, 10);
+    char *fileQtyBuf = NULL;
+    size_t n = 0;
+    getline(&fileQtyBuf, &n, stdin);
+    int aux = strtol(fileQtyBuf, NULL, 10);
+    free(fileQtyBuf);
+    return aux;
 }
 
-char readFromSharedMemory(struct shmbuf *shmp, char *buffer, char *toPrint, int *bytesRead)
+char printFromSharedMemory(sem_t *readyFiles, char *buffer, char *toPrint, size_t *bytesRead)
 {
-    sem_wait(&shmp->readyFiles);
-    sem_wait(&shmp->mutex);
-    memcpy(toPrint, &buffer[*bytesRead], DATA_LENGTH);
-    sem_post(&shmp->mutex);
-    *bytesRead += DATA_LENGTH;
-    return toPrint[0] == 0;
+    sem_wait(readyFiles);
+    printf("%s\n", buffer + *bytesRead);
+    int readBytes = strlen(buffer + *bytesRead);
+    *bytesRead += readBytes + 1;
+    return readBytes == 0;
+}
+
+char isProcessRunning(char *processName)
+{
+    int findID = fork(); // Escribe al pipe
+    if (findID == 0)
+    {
+        char buffer[strlen(processName) + 20];
+        buffer[0] = 0;
+        strcat(buffer, "pidof ");
+        strcat(buffer, processName);
+        strcat(buffer, " > /dev/null");
+        char *const params[] = {"/bin/sh", "-c", buffer, NULL};
+        execve("/bin/sh", params, 0);
+        perror("execve");
+        return 0;
+    }
+
+    int status;
+    waitpid(findID, &status, 0);
+    return WEXITSTATUS(status) == 0;
 }

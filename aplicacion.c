@@ -16,16 +16,16 @@ int createSlaves(int pidSlaves[SLAVE_QTY], int writePipesFd[SLAVE_QTY], int read
 
 int calculateInitialFilesPerSlave(int fileQty, int pageSize);
 
-void initSemaphores(struct shmbuf *shmp);
+void initSemaphores(sem_t *readyFiles);
 
-void parseMessage(char *message, char *lastMd5, char *lastFilename);
+void parseMessage(char *message, char *lastMd5, char *lastFilename, size_t length);
 
-void buildString(char *string, char *lastMd5, char *lastFilename, int pid);
+int buildString(char *string, char *lastMd5, char *lastFilename, int pid);
 
 // Devuelve el numero de esclavo a partir de un FD, o -1 si ese fd no corresponde a ningun esclavo
 int getSlaveNumberFromFd(int fd, int readPipesFd[SLAVE_QTY], int writePipesFd[SLAVE_QTY]);
 
-void writeToSharedMemory(char *string, struct shmbuf *shmp, char *buffer);
+void writeToSharedMemory(char *string, sem_t *readyFiles, char *buffer, int lenght, int *bytesWrittenToSharedMemory);
 
 // Envia mensaje de cierre al esclavo, cierra los pipes correspondientes y lo marca como cerrado
 void closeSlave(int slaveNumber, int readPipesFd[SLAVE_QTY], int writePipesFd[SLAVE_QTY], fd_set readfds, char isSlaveClosed[SLAVE_QTY]);
@@ -39,7 +39,7 @@ int main(int argc, char **argv)
     /* Create shared memory object and set its size to the size of our structure. */
 
     int pageSize = sysconf(_SC_PAGE_SIZE);
-    off_t offset = (off_t)ceil((double)sizeof(struct shmbuf) / pageSize) * pageSize;
+    off_t offset = (off_t)ceil((double)sizeof(sem_t) / pageSize) * pageSize;
 
     int shmFd = shm_open(shmpath, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     if (shmFd == -1)
@@ -50,23 +50,24 @@ int main(int argc, char **argv)
 
     /* Map the object into the caller's address space. */
 
-    struct shmbuf *shmp = mmap(NULL, sizeof(*shmp), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
-    if (shmp == MAP_FAILED)
+    sem_t *readyFiles = mmap(NULL, sizeof(readyFiles), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
+    if (readyFiles == MAP_FAILED)
         perror("mmap");
 
     char *buffer = mmap(NULL, DATA_LENGTH * (fileQty + 1), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, offset);
 
     /* Initialize semaphores as process-shared, with value 0. */
 
-    initSemaphores(shmp);
+    int bytesWrittenToSharedMemory = 0;
+
+    initSemaphores(readyFiles);
+
+
+    printf("%d\n", fileQty);
 
     sleep(2);
 
-    if (isProcessRunning("vista.out"))
-    {
-        printf("%d\n", fileQty);
-        fflush(stdout);
-    }
+
 
     int readyFilesQty = 0;
     int sentFilesQty = 0;
@@ -78,10 +79,6 @@ int main(int argc, char **argv)
     fd_set readfds;
 
     int i;
-
-    char lastMd5[MD5_LENGTH + 1];
-    char lastFilename[MAX_PATH_LENGTH];
-    char message[MD5_LENGTH + MAX_PATH_LENGTH + 2];
 
     char isSlaveClosed[SLAVE_QTY] = {0};
     char initialFilesLeft[SLAVE_QTY] = {0};
@@ -95,16 +92,26 @@ int main(int argc, char **argv)
     int maxReadFD = createSlaves(pidSlaves, writePipesFd, readPipesFd, fileQty, &sentFilesQty, argv);
 
     int initialFilesPerSlave = calculateInitialFilesPerSlave(fileQty, pageSize);
+
+    int filesSentToSlave[SLAVE_QTY][fileQty];
+    int filesSentToSlaveIndex[SLAVE_QTY] = {0};
+    int filesReadFromSlaveIndex[SLAVE_QTY] = {0};
+
     for (i = 0; i < SLAVE_QTY; i++)
     {
         int j;
         for (j = 0; j < initialFilesPerSlave; j++)
         {
             sendString(argv[sentFilesQty + 1], writePipesFd[i]);
+
+            filesSentToSlave[i][filesSentToSlaveIndex[i]++] = sentFilesQty + 1;
+
             sentFilesQty++;
             initialFilesLeft[i]++;
         }
     }
+
+    char md5result[MD5_LENGTH+1] = {0};
 
     while (readyFilesQty < fileQty)
     {
@@ -127,50 +134,52 @@ int main(int argc, char **argv)
             {
                 int slaveNumber = getSlaveNumberFromFd(fd, readPipesFd, writePipesFd);
 
-                if (read(fd, message, MD5_LENGTH + MAX_PATH_LENGTH) == -1)
+                size_t lineLen = 0;
+                if ((lineLen = read(fd, md5result, MD5_LENGTH+1)) == -1)
                 {
                     perror("read");
                 }
 
-                parseMessage(message, lastMd5, lastFilename);
-
+                md5result[lineLen - 1] = 0;
+                                                                     
                 readyFilesQty++;
                 if (slaveNumber != -1)
                 {
                     if (sentFilesQty == fileQty)
                     {
-                        closeSlave(slaveNumber, readPipesFd, writePipesFd, readfds, isSlaveClosed);
+                        closeSlave(slaveNumber, readPipesFd, writePipesFd, readfds, isSlaveClosed);         
                     }
                     else
                     {
-
                         // there are no initial Files Left
                         if (initialFilesLeft[slaveNumber] > 0)
                         {
                             initialFilesLeft[slaveNumber]--;
+
                         }
                         if (initialFilesLeft[slaveNumber] == 0)
                         {
                             sendString(argv[1 + sentFilesQty], writePipesFd[slaveNumber]);
+                            filesSentToSlave[slaveNumber][filesSentToSlaveIndex[slaveNumber]++] = sentFilesQty + 1;
                             sentFilesQty++;
                         }
                     }
 
-                    fprintf(resultFile, "md5: %s || ID: %d || filename: %s \n", lastMd5, pidSlaves[slaveNumber], lastFilename);
 
                     char string[DATA_LENGTH] = {0};
-                    buildString(string, lastMd5, lastFilename, pidSlaves[slaveNumber]);
 
-                    writeToSharedMemory(string, shmp, buffer);
+                    int stringLen = sprintf(string, "md5: %s || ID: %d || filename: %s%c", md5result, pidSlaves[slaveNumber], argv[filesSentToSlave[slaveNumber][filesReadFromSlaveIndex[slaveNumber]++]], '\0');
+                    fprintf(resultFile, "%s\n", string);
 
-                    lastFilename[0] = 0;
-                    lastMd5[0] = 0;
+                    writeToSharedMemory(string, readyFiles, buffer, stringLen, &bytesWrittenToSharedMemory);
+
+                    md5result[0] = 0;
                 }
             }
         }
     }
 
-    writeToSharedMemory("", shmp, buffer);
+    writeToSharedMemory("", readyFiles, buffer,1, &bytesWrittenToSharedMemory);
 
     fclose(resultFile);
     shm_unlink(shmpath);
@@ -178,16 +187,10 @@ int main(int argc, char **argv)
     return 0;
 }
 
-void initSemaphores(struct shmbuf *shmp)
+void initSemaphores(sem_t *readyFiles)
 {
-    if (sem_init(&shmp->mutex, SHARE_BETWEEN_PROCESSES, 1) == -1)
-        perror("sem_init-mutex");
-    if (sem_init(&shmp->readyFiles, SHARE_BETWEEN_PROCESSES, 0) == -1)
+    if (sem_init(readyFiles, SHARE_BETWEEN_PROCESSES, 0) == -1)
         perror("sem_init-readyFiles");
-
-    sem_wait(&shmp->mutex);
-    shmp->cnt = 0;
-    sem_post(&shmp->mutex);
 }
 
 int calculateInitialFilesPerSlave(int fileQty, int pageSize)
@@ -201,28 +204,11 @@ int calculateInitialFilesPerSlave(int fileQty, int pageSize)
     return res;
 }
 
-void parseMessage(char *message, char *lastMd5, char *lastFilename)
+void writeToSharedMemory(char *string, sem_t *readyFiles, char *buffer, int lenght, int *bytesWrittenToSharedMemory)
 {
-    strncpy(lastMd5, message, MD5_LENGTH);
-    lastMd5[MD5_LENGTH] = '\0';
-    strncpy(lastFilename, message + MD5_LENGTH, MAX_PATH_LENGTH);
-}
-
-void buildString(char *string, char *lastMd5, char *lastFilename, int pid)
-{
-    strncpy(string, lastMd5, MD5_LENGTH);
-    strncpy(string + MD5_LENGTH + 1, lastFilename, MAX_PATH_LENGTH);
-    sprintf(string + MD5_LENGTH + MAX_PATH_LENGTH + 2, "%d", pid);
-}
-
-void writeToSharedMemory(char *string, struct shmbuf *shmp, char *buffer)
-{
-
-    sem_wait(&shmp->mutex);
-    memcpy(&(buffer[shmp->cnt]), string, DATA_LENGTH);
-    shmp->cnt += DATA_LENGTH;
-    sem_post(&shmp->mutex);
-    sem_post(&shmp->readyFiles);
+    memcpy(&(buffer[*bytesWrittenToSharedMemory]), string, lenght);
+    *bytesWrittenToSharedMemory += lenght;
+    sem_post(readyFiles);
 }
 void closeSlave(int slaveNumber, int readPipesFd[SLAVE_QTY], int writePipesFd[SLAVE_QTY], fd_set readfds, char isSlaveClosed[SLAVE_QTY])
 {
@@ -262,9 +248,8 @@ int getSlaveNumberFromFd(int fd, int readPipesFd[SLAVE_QTY], int writePipesFd[SL
 int sendString(char *string, int fd)
 {
     char aux[MAX_PATH_LENGTH + 1] = {0};
-    strcpy(aux, string);
-    strcat(aux, "\n");
-    if (write(fd, aux, MAX_PATH_LENGTH + 1) == -1)
+    int len = sprintf(aux, "%s\n", string);
+    if (write(fd, aux, len) == -1)
     {
         perror("write");
     }
