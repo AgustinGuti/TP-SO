@@ -33,14 +33,15 @@ int main(int argc, char **argv)
             }
             break;
         }
+        // Elimino el salto de linea
         filename[charsRead - 1] = 0;
 
         char md5Result[MD5_LENGTH + 1];
         delegateMd5(filename, md5Result);
-        char resultData[MAX_PATH_LENGTH + MD5_LENGTH + 1] = {0};
-        int lenght = sprintf(resultData, "%s\n", md5Result); 
+        char resultData[MD5_LENGTH + 1] = {0};
+        int length = sprintf(resultData, "%s\n", md5Result); 
 
-        if (write(1, resultData, lenght) == -1)
+        if (write(1, resultData, length) == -1)
         {
             perror("write");
         }

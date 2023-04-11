@@ -2,11 +2,10 @@
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include <sys/select.h>
 #include "config.h"
-#include "shm_config.h"
+#include "shm_buffer.h"
 
 #define SLAVE_QTY 5
 #define INITIAL_FILE_DISTRIBUTION_FACTOR 0.1
-#define SHARE_BETWEEN_PROCESSES 1
 #define SET_INITIAL_FILES_PER_SLAVE(fileQty) fileQty *INITIAL_FILE_DISTRIBUTION_FACTOR / SLAVE_QTY
 
 int sendString(char *string, int fd);
@@ -34,40 +33,19 @@ int main(int argc, char **argv)
 {
     int fileQty = argc - 1;
 
-    char *shmpath = "/shm_vista";
+    int processID = getpid();
 
     /* Create shared memory object and set its size to the size of our structure. */
 
-    int pageSize = sysconf(_SC_PAGE_SIZE);
-    off_t offset = (off_t)ceil((double)sizeof(sem_t) / pageSize) * pageSize;
-
-    int shmFd = shm_open(shmpath, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-    if (shmFd == -1)
-        perror("shm_open");
-
-    if (ftruncate(shmFd, offset + (fileQty + 1) * DATA_LENGTH) == -1)
-        perror("ftruncate");
-
-    /* Map the object into the caller's address space. */
-
-    sem_t *readyFiles = mmap(NULL, sizeof(readyFiles), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
-    if (readyFiles == MAP_FAILED)
-        perror("mmap");
-
-    char *buffer = mmap(NULL, DATA_LENGTH * (fileQty + 1), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, offset);
+    shmData *shBufferData = createSharedBuffer(processID, fileQty);
 
     /* Initialize semaphores as process-shared, with value 0. */
 
-    int bytesWrittenToSharedMemory = 0;
+    initializeSemaphore(shBufferData, 0);
 
-    initSemaphores(readyFiles);
-
-
-    printf("%d\n", fileQty);
+    printf("%d\n", processID);
 
     sleep(2);
-
-
 
     int readyFilesQty = 0;
     int sentFilesQty = 0;
@@ -90,11 +68,15 @@ int main(int argc, char **argv)
     }
 
     int maxReadFD = createSlaves(pidSlaves, writePipesFd, readPipesFd, fileQty, &sentFilesQty, argv);
+  
+    int initialFilesPerSlave = calculateInitialFilesPerSlave(fileQty, sysconf(_SC_PAGE_SIZE));
 
-    int initialFilesPerSlave = calculateInitialFilesPerSlave(fileQty, pageSize);
-
+    //Para almacenar que archivos le mando a cada esclavo
+    //Representa el indice del archivo en argv
     int filesSentToSlave[SLAVE_QTY][fileQty];
-    int filesSentToSlaveIndex[SLAVE_QTY] = {0};
+
+    int filesSentToSlaveIndex[SLAVE_QTY] = {0}; 
+
     int filesReadFromSlaveIndex[SLAVE_QTY] = {0};
 
     for (i = 0; i < SLAVE_QTY; i++)
@@ -168,10 +150,11 @@ int main(int argc, char **argv)
 
                     char string[DATA_LENGTH] = {0};
 
-                    int stringLen = sprintf(string, "md5: %s || ID: %d || filename: %s%c", md5result, pidSlaves[slaveNumber], argv[filesSentToSlave[slaveNumber][filesReadFromSlaveIndex[slaveNumber]++]], '\0');
+                    int fileIndexReadFromSlave = filesSentToSlave[slaveNumber][filesReadFromSlaveIndex[slaveNumber]++];
+                    int stringLen = sprintf(string, "md5: %s || ID: %d || filename: %s%c", md5result, pidSlaves[slaveNumber], argv[fileIndexReadFromSlave], '\0');
                     fprintf(resultFile, "%s\n", string);
 
-                    writeToSharedMemory(string, readyFiles, buffer, stringLen, &bytesWrittenToSharedMemory);
+                    writeToSharedBuffer(shBufferData, string, stringLen);
 
                     md5result[0] = 0;
                 }
@@ -179,18 +162,12 @@ int main(int argc, char **argv)
         }
     }
 
-    writeToSharedMemory("", readyFiles, buffer,1, &bytesWrittenToSharedMemory);
+    writeToSharedBuffer(shBufferData, "", 1);
 
     fclose(resultFile);
-    shm_unlink(shmpath);
 
+    closeSharedBuffer(shBufferData);
     return 0;
-}
-
-void initSemaphores(sem_t *readyFiles)
-{
-    if (sem_init(readyFiles, SHARE_BETWEEN_PROCESSES, 0) == -1)
-        perror("sem_init-readyFiles");
 }
 
 int calculateInitialFilesPerSlave(int fileQty, int pageSize)
@@ -204,12 +181,7 @@ int calculateInitialFilesPerSlave(int fileQty, int pageSize)
     return res;
 }
 
-void writeToSharedMemory(char *string, sem_t *readyFiles, char *buffer, int lenght, int *bytesWrittenToSharedMemory)
-{
-    memcpy(&(buffer[*bytesWrittenToSharedMemory]), string, lenght);
-    *bytesWrittenToSharedMemory += lenght;
-    sem_post(readyFiles);
-}
+
 void closeSlave(int slaveNumber, int readPipesFd[SLAVE_QTY], int writePipesFd[SLAVE_QTY], fd_set readfds, char isSlaveClosed[SLAVE_QTY])
 {
     if (close(writePipesFd[slaveNumber]) == -1)
