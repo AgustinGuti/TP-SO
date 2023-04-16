@@ -4,7 +4,6 @@
 
 #define SHARE_BETWEEN_PROCESSES 1
 
-
 struct shmData
 {
     sem_t readyFiles;
@@ -17,7 +16,6 @@ struct shmData
     size_t bytesRead;
     char shmPath[30];
 };
-
 
 shmData *createSharedBuffer(int id, int fileQty)
 {
@@ -39,7 +37,7 @@ shmData *createSharedBuffer(int id, int fileQty)
     shmData *shmDataCreated = mmap(NULL, sizeof(shmData), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
     if (shmDataCreated == MAP_FAILED)
         perror("mmap");
-    
+
     initializeSemaphore(shmDataCreated, 0);
 
     shmDataCreated->offset = offset;
@@ -50,14 +48,15 @@ shmData *createSharedBuffer(int id, int fileQty)
     shmDataCreated->writeBuffer = mmap(NULL, shmDataCreated->bufSize, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, shmDataCreated->offset);
     if (shmDataCreated->writeBuffer == MAP_FAILED)
         perror("mmap");
-    
+
     shmDataCreated->bytesWritten = 0;
     shmDataCreated->bytesRead = 0;
 
-    return  shmDataCreated;
+    return shmDataCreated;
 }
 
-shmData *joinSharedBuffer(int id){
+shmData *joinSharedBuffer(int id)
+{
 
     char shmPath[30];
     sprintf(shmPath, "/shm_app_%d", id);
@@ -65,7 +64,7 @@ shmData *joinSharedBuffer(int id){
     int shmFd = shm_open(shmPath, O_RDWR, 0);
     if (shmFd == -1)
         perror("shm_open");
-    
+
     shmData *shmDataCreated = mmap(NULL, sizeof(shmData), PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, 0);
     if (shmDataCreated == MAP_FAILED)
         perror("mmap");
@@ -73,7 +72,7 @@ shmData *joinSharedBuffer(int id){
     shmDataCreated->readBuffer = mmap(NULL, shmDataCreated->bufSize, PROT_READ | PROT_WRITE, MAP_SHARED, shmFd, shmDataCreated->offset);
     if (shmDataCreated->readBuffer == MAP_FAILED)
         perror("mmap");
-    return shmDataCreated;        
+    return shmDataCreated;
 }
 
 void initializeSemaphore(shmData *shmDataCreated, int initialValue)
@@ -82,38 +81,36 @@ void initializeSemaphore(shmData *shmDataCreated, int initialValue)
         perror("sem_init-readyFiles");
 }
 
-void writeToSharedBuffer(shmData *shmDataCreated, char *data, size_t len){
+void writeToSharedBuffer(shmData *shmDataCreated, char *data, size_t len)
+{
 
     memcpy(&(shmDataCreated->writeBuffer[shmDataCreated->bytesWritten]), data, len);
     shmDataCreated->bytesWritten += len;
     sem_post(&shmDataCreated->readyFiles);
-
 }
 
-char printFromSharedBuffer(shmData *shmDataCreated){
+char printFromSharedBuffer(shmData *shmDataCreated)
+{
 
     char data[DATA_LENGTH] = {0};
     int readBytes = readFromSharedBuffer(shmDataCreated, data);
     printf("%s\n", data);
     return readBytes == 0;
-
 }
 
-int readFromSharedBuffer(shmData *shmDataCreated, char* data){
+int readFromSharedBuffer(shmData *shmDataCreated, char *data)
+{
 
     sem_wait(&shmDataCreated->readyFiles);
-   
+
     int readBytes = sprintf(data, "%s", shmDataCreated->readBuffer + shmDataCreated->bytesRead);
     shmDataCreated->bytesRead += readBytes + 1;
     return readBytes;
 }
 
-void closeSharedBuffer(shmData *shmDataCreated){
-
-    // munmap(shmDataCreated->writeBuffer, shmDataCreated->bufSize);
-    // munmap(shmDataCreated, sizeof(shmData));
-
+void closeSharedBuffer(shmData *shmDataCreated)
+{
     sem_close(&shmDataCreated->readyFiles);
+    sem_destroy(&shmDataCreated->readyFiles);
     shm_unlink(shmDataCreated->shmPath);
 }
-

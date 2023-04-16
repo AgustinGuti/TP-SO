@@ -33,10 +33,10 @@ int main(int argc, char *argv[])
 
     while (1)
     {
-        if (printFromSharedBuffer(shBufferData)){
+        if (printFromSharedBuffer(shBufferData))
+        {
             break;
         }
-
     }
 
     closeSharedBuffer(shBufferData);
@@ -55,7 +55,7 @@ int readAppPID()
 
 char isProcessRunning(char *processName)
 {
-    int findID = fork(); // Escribe al pipe
+    int findID = fork();
     if (findID == 0)
     {
         char buffer[strlen(processName) + 20];

@@ -6,7 +6,7 @@
 
 #define SLAVE_QTY 5
 #define INITIAL_FILE_DISTRIBUTION_FACTOR 0.1
-#define SET_INITIAL_FILES_PER_SLAVE(fileQty) ((fileQty) *INITIAL_FILE_DISTRIBUTION_FACTOR / SLAVE_QTY)
+#define SET_INITIAL_FILES_PER_SLAVE(fileQty) ((fileQty)*INITIAL_FILE_DISTRIBUTION_FACTOR / SLAVE_QTY)
 
 int sendString(char *string, int fd);
 
@@ -62,21 +62,25 @@ int main(int argc, char **argv)
     }
 
     int maxReadFD = createSlaves(pidSlaves, writePipesFd, readPipesFd, fileQty, &sentFilesQty, argv);
-  
+
     int initialFilesPerSlave = calculateInitialFilesPerSlave(fileQty, sysconf(_SC_PAGE_SIZE));
 
-    //Para almacenar que archivos le mando a cada esclavo
-    //Representa el indice del archivo en argv
+    // Para almacenar que archivos le mando a cada esclavo
+    // Representa el indice del archivo en argv
     int filesSentToSlave[SLAVE_QTY][fileQty];
 
-    int filesSentToSlaveIndex[SLAVE_QTY] = {0}; 
+    int filesSentToSlaveIndex[SLAVE_QTY] = {0};
 
     int filesReadFromSlaveIndex[SLAVE_QTY] = {0};
 
     for (i = 0; i < SLAVE_QTY; i++)
     {
+        if (sentFilesQty == fileQty)
+        {
+            closeSlave(i, readPipesFd, writePipesFd, readfds, isSlaveClosed);
+        }
         int j;
-        for (j = 0; j < initialFilesPerSlave; j++)
+        for (j = 0; j < initialFilesPerSlave && sentFilesQty < fileQty; j++)
         {
             sendString(argv[sentFilesQty + 1], writePipesFd[i]);
 
@@ -87,7 +91,7 @@ int main(int argc, char **argv)
         }
     }
 
-    char md5result[MD5_LENGTH+1] = {0};
+    char md5result[MD5_LENGTH + 1] = {0};
 
     while (readyFilesQty < fileQty)
     {
@@ -111,13 +115,13 @@ int main(int argc, char **argv)
                 int slaveNumber = getSlaveNumberFromFd(fd, readPipesFd, writePipesFd);
 
                 size_t lineLen = 0;
-                if ((lineLen = read(fd, md5result, MD5_LENGTH+1)) == -1)
+                if ((lineLen = read(fd, md5result, MD5_LENGTH + 1)) == -1)
                 {
                     perror("read");
                 }
 
                 md5result[lineLen - 1] = 0;
-                                                                     
+
                 readyFilesQty++;
                 if (slaveNumber != -1)
                 {
@@ -126,11 +130,13 @@ int main(int argc, char **argv)
                         initialFilesLeft[slaveNumber]--;
                     }
                     if (initialFilesLeft[slaveNumber] == 0)
-                    {   
-                        if (sentFilesQty == fileQty){
-                            closeSlave(slaveNumber, readPipesFd, writePipesFd, readfds, isSlaveClosed);         
+                    {
+                        if (sentFilesQty == fileQty)
+                        {
+                            closeSlave(slaveNumber, readPipesFd, writePipesFd, readfds, isSlaveClosed);
                         }
-                        else{ 
+                        else
+                        {
                             sendString(argv[1 + sentFilesQty], writePipesFd[slaveNumber]);
                             filesSentToSlave[slaveNumber][filesSentToSlaveIndex[slaveNumber]++] = sentFilesQty + 1;
                             sentFilesQty++;
@@ -167,6 +173,8 @@ int calculateInitialFilesPerSlave(int fileQty, int pageSize)
     {
         res = pipeCapacity / (MAX_PATH_LENGTH + 1);
     }
+    if (res == 0)
+        res = 1;
     return res;
 }
 

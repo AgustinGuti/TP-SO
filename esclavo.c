@@ -13,22 +13,21 @@
 // Crea un proceso md5sum que hashea filename y deja el resultado en result
 void delegateMd5(char *filename, char result[MD5_LENGTH + 1]);
 
-int createResultData(char *filename, char *md5, char *resultData);
-
 int main(int argc, char **argv)
 {
-    size_t linecap = MAX_PATH_LENGTH+1;
+    size_t linecap = MAX_PATH_LENGTH + 1;
     char *filename = malloc(MAX_PATH_LENGTH + 1);
 
     while (1)
     {
-        
+
         int charsRead = 0;
 
         errno = 0;
         if ((charsRead = getline(&filename, &linecap, stdin)) == -1)
         {
-            if (errno != 0){
+            if (errno != 0)
+            {
                 perror("getline");
             }
             break;
@@ -39,7 +38,7 @@ int main(int argc, char **argv)
         char md5Result[MD5_LENGTH];
         delegateMd5(filename, md5Result);
         char resultData[MD5_LENGTH + 1] = {0};
-        int length = sprintf(resultData, "%s\n", md5Result); 
+        int length = sprintf(resultData, "%s\n", md5Result);
 
         if (write(1, resultData, length) == -1)
         {
