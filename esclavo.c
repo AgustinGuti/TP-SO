@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include "config.h"
+#include <fcntl.h>
 
 // Crea un proceso md5sum que hashea filename y deja el resultado en result
 void delegateMd5(char *filename, char result[MD5_LENGTH + 1]);
@@ -40,11 +41,20 @@ int main(int argc, char **argv)
         char resultData[MD5_LENGTH + 1] = {0};
         int length = sprintf(resultData, "%s\n", md5Result);
 
+        int fdFifo = open("pipeSlaves", O_WRONLY);
+
         if (write(1, resultData, length) == -1)
         {
             perror("write");
         }
+
+        if (write(fdFifo, resultData, length) == -1)
+        {
+            perror("write-pipeSlaves");
+        }
+        close(fdFifo);
     }
+
     free(filename);
 
     return 0;

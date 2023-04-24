@@ -3,6 +3,10 @@
 #include <sys/select.h>
 #include "config.h"
 #include "shm_buffer.h"
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h> /* Definition of AT_* constants */
+#include <sys/stat.h>
 
 #define SLAVE_QTY 5
 #define INITIAL_FILE_DISTRIBUTION_FACTOR 0.1
@@ -72,6 +76,8 @@ int main(int argc, char **argv)
     int filesSentToSlaveIndex[SLAVE_QTY] = {0};
 
     int filesReadFromSlaveIndex[SLAVE_QTY] = {0};
+
+    mkfifo("pipeSlaves", 0666);
 
     for (i = 0; i < SLAVE_QTY; i++)
     {
@@ -190,6 +196,25 @@ void closeSlave(int slaveNumber, int readPipesFd[SLAVE_QTY], int writePipesFd[SL
         perror("close");
     }
     isSlaveClosed[slaveNumber] = 1;
+    if (areAllClosed(isSlaveClosed))
+    {
+        int fdFifo = open("pipeSlaves", O_WRONLY);
+        write(fdFifo, EOF, 1);
+        close(fdFifo);
+    }
+}
+
+int areAllClosed(char isSlaveClosed[])
+{
+    int i;
+    for (i = 0; i < SLAVE_QTY; i++)
+    {
+        if (isSlaveClosed[i] == 0)
+        {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 int getSlaveNumberFromFd(int fd, int readPipesFd[SLAVE_QTY], int writePipesFd[SLAVE_QTY])
