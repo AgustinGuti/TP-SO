@@ -1,3 +1,9 @@
+
+# Introducción
+
+Este trabajo se enfoca en Inter Process Communication (IPC) e implementa un sistema de distribución de cómputo para la generación del hash md5 de múltiples archivos entre varios procesos. Los IPCs utilizados en el trabajo son pipes y shared memory.  
+
+
 # Instrucciones de compilación y ejecución
 
 Para la compilación, se debe realizar el comando
